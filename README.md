@@ -22,5 +22,5 @@ Then, just chat.
 Enjoy.
 
 # Thanks to
-- Tazos-py for the great search engine plugin. (tasos-py/Search-Engines-Scraper)
-- Ollama for the great local LLM software.
+- Tasos M Adamopoulos for the great search engine plugin. [tasos-py/Search-Engines-Scraper](https://github.com/tasos-py/Search-Engines-Scraper)
+- Ollama team for the great local LLM software. [ollama](https://github.com/ollama)

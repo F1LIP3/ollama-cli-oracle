@@ -1,0 +1,2 @@
+ollama==0.3.3
+search_engines==0.5

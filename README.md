@@ -1,7 +1,7 @@
 # ollama-cli-oracle
 Use ollama locally plus search engine to check online real time information when needed.
 
-# how to use: 
+# how to use
 1. Run this command to install the search engine dependency + ollama:
 ```
 pip install git+https://github.com/tasos-py/Search-Engines-Scraper ollama
@@ -10,7 +10,7 @@ pip install git+https://github.com/tasos-py/Search-Engines-Scraper ollama
 - --model (Name of the model available on ollama library to be used (default: llama3.2))
 - --search (Activate if you want to have an oracle to search the internet for information . (default: None), google, bing, yahoo, duckduckgo, brave, etc)
 
-Example:
+# Example
 ```
 python ollama-cli-oracle.py --search='google' 
 ```

@@ -7,7 +7,7 @@ Use ollama locally plus search engine to check online real time information when
 pip install git+https://github.com/tasos-py/Search-Engines-Scraper ollama
 ```
 2. Start the python script on cmd with arguments: 
-- --model (Name of the model available on ollama library to be used (default: llama3.2))
+- --model (Name of the model available on ollama library to be used (default: llama3.2)) [Library](https://ollama.com/library)
 - --search (Activate if you want to have an oracle to search the internet for information . (default: None), google, bing, yahoo, duckduckgo, brave, etc)
 
 # Example

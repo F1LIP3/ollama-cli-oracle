@@ -145,6 +145,7 @@ def main():
         prompt = get_prompt()
         if '/clear' == prompt:
             messages.clear()
+            print('Messages context cleared.')
         else:
             messages.append({'role': 'user', 'content': prompt})
 

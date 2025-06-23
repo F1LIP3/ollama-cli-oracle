@@ -1,3 +1,4 @@
 ollama>=0.3.0
 openai>=1.0.0 # For LM Studio OpenAI-compatible endpoint
 streamlit>=1.20.0 # For the Web UI
+requests

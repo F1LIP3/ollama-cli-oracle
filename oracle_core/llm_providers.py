@@ -1,5 +1,65 @@
 # Placeholder for LLM provider interaction (Ollama, LM Studio)
 # We'll move the 'chat' related functions here.
+import requests # Added for making HTTP requests
+import json     # Added for parsing JSON responses
+
+# Standard library imports if any, e.g.
+# import os
+
+# Third-party library imports, e.g.
+# from some_library import SomeClass
+
+
+def get_available_models(provider: str, host: str = 'localhost') -> list[str]:
+    """
+    Fetches the list of available models from the specified LLM provider.
+
+    Args:
+        provider (str): The LLM provider ('ollama' or 'lm_studio').
+        host (str): The hostname or IP address of the provider server.
+
+    Returns:
+        list[str]: A list of model names. Returns an empty list if an error occurs
+                   or no models are found.
+    """
+    models = []
+    if provider == 'ollama':
+        ollama_port = 11434
+        url = f"http://{host}:{ollama_port}/api/tags"
+        try:
+            response = requests.get(url, timeout=5) # Added timeout
+            response.raise_for_status()  # Raise an exception for HTTP errors
+            data = response.json()
+            models = [model['name'] for model in data.get('models', [])]
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching models from Ollama: {e}")
+            # Optionally, could return a more specific error or raise it
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON response from Ollama: {response.text}")
+        except KeyError:
+            print(f"Unexpected JSON structure from Ollama: {data}")
+
+    elif provider == 'lm_studio':
+        lm_studio_port = 1234
+        url = f"http://{host}:{lm_studio_port}/v1/models"
+        try:
+            response = requests.get(url, timeout=5) # Added timeout
+            response.raise_for_status()
+            data = response.json()
+            # Standard OpenAI API response has models in a 'data' list, each with an 'id'
+            models = [model['id'] for model in data.get('data', []) if 'id' in model]
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching models from LM Studio: {e}")
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON response from LM Studio: {response.text}")
+        except KeyError:
+            print(f"Unexpected JSON structure from LM Studio: {data}")
+    else:
+        print(f"Unsupported provider for get_available_models: {provider}")
+        # Or raise ValueError(f"Unsupported provider: {provider}")
+
+    return models
+
 
 def call_llm(messages, model_name, provider='ollama'):
     """

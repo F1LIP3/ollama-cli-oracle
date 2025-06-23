@@ -2,6 +2,7 @@
 # We'll move the 'chat' related functions here.
 import requests # Added for making HTTP requests
 import json     # Added for parsing JSON responses
+import re       # Added for regular expression operations
 
 # Standard library imports if any, e.g.
 # import os
@@ -71,17 +72,18 @@ def call_llm(messages, model_name, provider='ollama'):
         provider (str): The LLM provider ('ollama' or 'lm_studio').
 
     Returns:
-        str: The LLM's response content.
+        str: The LLM's response content, with <think> tags removed.
     """
+    raw_response_content = ""
     if provider == 'ollama':
         # Assuming ollama library is installed and configured
         from ollama import chat
         try:
             response = chat(model=model_name, messages=messages)
-            return response['message']['content']
+            raw_response_content = response['message']['content']
         except Exception as e:
             print(f"Error calling Ollama: {e}")
-            return f"Error communicating with Ollama: {e}"
+            raw_response_content = f"Error communicating with Ollama: {e}"
     elif provider == 'lm_studio':
         try:
             from openai import OpenAI
@@ -95,15 +97,25 @@ def call_llm(messages, model_name, provider='ollama'):
                 messages=messages,
                 temperature=0.7, # Default temperature, can be made configurable
             )
-            return completion.choices[0].message.content
+            raw_response_content = completion.choices[0].message.content
         except ImportError:
             print("OpenAI library not found. Please install it with 'pip install openai'")
-            return "OpenAI library not found. Please install it to use LM Studio."
+            raw_response_content = "OpenAI library not found. Please install it to use LM Studio."
         except Exception as e:
             print(f"Error calling LM Studio (OpenAI compatible endpoint): {e}")
-            return f"Error communicating with LM Studio: {e}"
+            raw_response_content = f"Error communicating with LM Studio: {e}" # Ensure this path also sets raw_response_content
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
+
+    # Filter out <think>...</think> tags
+    if isinstance(raw_response_content, str):
+        cleaned_response_content = re.sub(r"<think>.*?</think>", "", raw_response_content, flags=re.DOTALL).strip()
+        # Also remove any leading/trailing whitespace that might be left after tag removal or was part of original response.
+        return cleaned_response_content
+    else:
+        # Should not happen if providers return strings or string error messages
+        return str(raw_response_content)
+
 
 def submit_for_evaluation(question, response, model_name, provider='ollama'):
     """
@@ -116,20 +128,52 @@ def submit_for_evaluation(question, response, model_name, provider='ollama'):
         provider (str): The LLM provider for evaluation.
 
     Returns:
-        bool: True if the evaluation result is 'Yes', False otherwise.
+        bool: True if the evaluation result is deemed 'Yes', False otherwise.
     """
-    EVALUATION_PROMPT = [
-        "Assess if this question pertains to a well-established fact or concept in a particular domain, such as history, science, technology, or culture: ",
-        "If yes, evaluate whether the answer at the end provides a clear and concise explanation of the concept, avoiding ambiguity or oversimplification. Consider the following criteria: relevance, accuracy, timeliness, and potential biases. Provide a clear '[Evaluation] - Yes' or '[Evaluation] - No' assessment of the answer accuracy to that question. This was the answer: "
-    ]
+    # New, more direct prompt focusing on answer quality
+    EVALUATION_PROMPT_TEMPLATE = """\
+You are an AI assistant tasked with evaluating the quality of an answer provided to a given question.
 
-    evaluation_messages = []
-    evaluation_prompt = EVALUATION_PROMPT[0] + question + EVALUATION_PROMPT[1] + response
-    evaluation_messages.append({'role': 'user', 'content': evaluation_prompt})
+Question:
+{question}
+
+Answer:
+{response}
+
+Based on the Question and Answer:
+1. Is the Answer accurate and factually correct based on general knowledge?
+2. Is the Answer relevant to the Question and does it directly address what was asked?
+3. Is the Answer clear, concise, and easy to understand?
+4. Does the Answer avoid significant ambiguity or oversimplification for the likely context of the question?
+
+Considering these criteria, especially accuracy and relevance, provide your assessment.
+Conclude your response with either "[Yes]" if the answer is satisfactory, or "[No]" if it is not, on a new line by itself.
+Example:
+The answer seems mostly correct but misses a key detail.
+[No]
+
+Another Example:
+The answer is clear, accurate, and directly addresses the question.
+[Yes]
+"""
+    # import re # Import regular expressions -> Moved to top of file
+
+    evaluation_prompt = EVALUATION_PROMPT_TEMPLATE.format(question=question, response=response)
+    evaluation_messages = [{'role': 'user', 'content': evaluation_prompt}]
 
     evaluation_result_content = call_llm(evaluation_messages, model_name, provider)
 
-    return "[Evaluation] - Yes" in evaluation_result_content
+    # More robust parsing:
+    # Look for [Yes] or [No] at the end of the string, case-insensitive, allowing for optional whitespace.
+    match = re.search(r"\[(Yes|No)\]\s*$", evaluation_result_content.strip(), re.IGNORECASE)
+
+    if match:
+        return match.group(1).lower() == 'yes'
+    else:
+        # Fallback or logging if the expected pattern isn't found
+        print(f"Warning: Evaluation output did not contain a clear [Yes] or [No] at the end. Output: '{evaluation_result_content}'")
+        # Defaulting to False if no clear Yes/No is found, to be conservative.
+        return False
 
 def refactor_search_input(user_input, model_name, provider='ollama'):
     """
@@ -143,14 +187,26 @@ def refactor_search_input(user_input, model_name, provider='ollama'):
     Returns:
         str: The refactored search query.
     """
-    SEARCH_ENGINE_OPTIMIZATION_PROMPT = "Optimize the following information request to be the most effective to retrieve the needed information when submitted to google search, your output should be only the optimized query, do not add anything else, because this will be used as input for a search query: "
+    NEW_SEARCH_ENGINE_OPTIMIZATION_PROMPT_TEMPLATE = """\
+You are an expert at crafting effective search engine queries.
+User's information request: "{user_input}"
 
-    refactor_messages = []
-    refactor_prompt = SEARCH_ENGINE_OPTIMIZATION_PROMPT + user_input
-    refactor_messages.append({'role': 'user', 'content': refactor_prompt})
+1. Identify the key entities, concepts, and intent in the user's request.
+2. Formulate a single, concise, and highly effective search query that is likely to yield the most relevant results for this request.
+3. Output *only* the optimized search query itself, without any preamble, labels, or explanation.
+
+Optimized Search Query:""" # The LLM should complete this line
+
+    refactor_prompt = NEW_SEARCH_ENGINE_OPTIMIZATION_PROMPT_TEMPLATE.format(user_input=user_input)
+    refactor_messages = [{'role': 'user', 'content': refactor_prompt}]
 
     refactored_query = call_llm(refactor_messages, model_name, provider)
-    return refactored_query
+    # Ensure only the query is returned, strip potential newlines or leading "Optimized Search Query:" if LLM adds it.
+    # A more robust way would be to parse if LLM doesn't strictly follow "only the query".
+    # For now, simple stripping.
+    if "Optimized Search Query:" in refactored_query:
+        refactored_query = refactored_query.split("Optimized Search Query:")[-1]
+    return refactored_query.strip()
 
 def process_search_result_with_llm(search_result, information_needed, model_name, provider='ollama'):
     """
@@ -163,16 +219,28 @@ def process_search_result_with_llm(search_result, information_needed, model_name
         provider (str): The LLM provider.
 
     Returns:
-        str: The processed result.
+        str: The processed result (final answer to the query).
     """
-    PROCESS_SEARCH_RESULT_PROMPT = [
-        "Based on this information: ",
-        ", answer the following query: "
-    ]
+    # Updated prompt for processing the summarized search results
+    PROCESS_SEARCH_RESULT_PROMPT_TEMPLATE = """\
+You have been provided with a summary of information gathered from web search results. Your task is to use this summary to directly answer the user's original query.
 
-    process_messages = []
-    process_prompt = PROCESS_SEARCH_RESULT_PROMPT[0] + search_result + PROCESS_SEARCH_RESULT_PROMPT[1] + information_needed
-    process_messages.append({'role': 'user', 'content': process_prompt})
+User's Original Query: "{information_needed}"
+
+Summary of Web Search Results:
+{search_result_summary}
+
+Based *only* on the provided "Summary of Web Search Results", formulate a clear, concise, and direct answer to the "User's Original Query".
+Do not add any information that is not present in the summary.
+If the summary does not contain enough information to answer the query, explicitly state that the summary does not provide a sufficient answer.
+Your final output should be just the answer to the query.
+"""
+
+    process_prompt = PROCESS_SEARCH_RESULT_PROMPT_TEMPLATE.format(
+        information_needed=information_needed,
+        search_result_summary=search_result # Renamed variable for clarity in prompt
+    )
+    process_messages = [{'role': 'user', 'content': process_prompt}]
 
     processed_answer = call_llm(process_messages, model_name, provider)
     return processed_answer
@@ -191,16 +259,31 @@ def summarize_search_results(search_results_text, query, model_name, provider='o
     """
     # Truncate search_results_text if it's too long to prevent excessive token usage
     if len(search_results_text) > max_length:
-        search_results_text = search_results_text[:max_length] + "..."
+        # Simple truncation for now. A more sophisticated approach might summarize chunks.
+        search_results_text = search_results_text[:max_length] + "\n... [Results Truncated] ..."
 
-    SUMMARIZATION_PROMPT = (
-        f"Based on the following search results, extract and synthesize the information "
-        f"that is most relevant to answering the query: '{query}'. "
-        f"Provide a concise summary of the key findings. Avoid making up information not present in the text. "
-        f"Search results snippet:\n\n{search_results_text}"
-    )
+    # Updated prompt to acknowledge the structure of search_results_text
+    SUMMARIZATION_PROMPT_TEMPLATE = """\
+You are provided with a series of search result snippets, each potentially containing a title, URL, and snippet text, formatted like:
+Source [Number]:
+Title: [Title of the page]
+URL: [URL of the page]
+Snippet: [Text snippet from the page]
+---
 
-    summarize_messages = [{'role': 'user', 'content': SUMMARIZATION_PROMPT}]
+Original User Query: "{query}"
+
+Review all the provided search result snippets. Extract and synthesize the information that is most relevant to answering the Original User Query.
+Provide a concise, consolidated summary of the key findings. Focus on information that directly addresses the query.
+Avoid making up information not present in the text. If multiple sources provide similar information, synthesize it.
+If sources provide conflicting information, you may note that.
+Your summary should be a coherent text, not just a list of facts.
+"""
+    # We add the actual search results below this instruction block.
+    full_summarization_prompt = SUMMARIZATION_PROMPT_TEMPLATE.format(query=query) + \
+                                f"\n\nSearch Results to Summarize:\n{search_results_text}"
+
+    summarize_messages = [{'role': 'user', 'content': full_summarization_prompt}]
 
     try:
         summary = call_llm(summarize_messages, model_name, provider)

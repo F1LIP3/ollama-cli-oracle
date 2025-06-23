@@ -11,10 +11,10 @@ def search_on_the_web(query, search_engine_name='google'):
         search_engine_name (str): Name of the search engine ('google', 'bing', etc.).
 
     Returns:
-        str: Concatenated results from the search, or an error message.
+        str: Concatenated and formatted results from the search, or an error message.
     """
-    NUM_OF_PAGES = 1  # Number of pages to scrape
-    results_text = ""
+    NUM_OF_PAGES = 2  # Increased number of pages to scrape
+    results_list = [] # Store individual formatted results
 
     # Select the search engine
     if search_engine_name == 'google':
@@ -43,17 +43,22 @@ def search_on_the_web(query, search_engine_name='google'):
         if not search_items: # Check if the list of search items is empty
              return f"No results found by {search_engine_name} for the query: '{query}'"
 
-        for item in search_items:
-            if isinstance(item, dict) and 'text' in item and item['text']:
-                results_text += item['text'] + "; "
-            # If the structure is different, this part will need adjustment.
-            # For example, if item directly is the text or item.text, etc.
+        for i, item in enumerate(search_items):
+            if isinstance(item, dict):
+                title = item.get('title', 'No title')
+                snippet = item.get('text', item.get('snippet', 'No snippet')) # 'text' or 'snippet'
+                link = item.get('link', item.get('url', 'No URL')) # 'link' or 'url'
 
-        if results_text:
-            return results_text.strip().rstrip(';') # Remove trailing semicolon and space
+                if snippet and snippet != 'No snippet': # Prioritize items with a snippet
+                    formatted_result = f"Source {i+1}:\nTitle: {title}\nURL: {link}\nSnippet: {snippet}\n---"
+                    results_list.append(formatted_result)
+            # If the structure is different, this part will need adjustment.
+
+        if results_list:
+            return "\n\n".join(results_list) # Join formatted results with double newlines
         else:
-            # This case means search_items was not empty, but no 'text' field was found or was empty.
-            return f"Search returned results, but no text content could be extracted or text was empty for query: '{query}' with {search_engine_name}."
+            # This case means search_items was not empty, but no usable text content could be extracted.
+            return f"Search returned results, but no usable text content (title, snippet, link) could be extracted for query: '{query}' with {search_engine_name}."
 
     except Exception as e:
         print(f"Error during web search with {search_engine_name} for query '{query}': {e}")

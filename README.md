@@ -48,8 +48,9 @@ This project provides a flexible Local LLM Oracle that can connect to different 
 3.  **Install dependencies:**
     ```bash
     pip install -r requirements.txt
+    pip install git+https://github.com/tasos-py/Search-Engines-Scraper
     ```
-    This will install `ollama`, `search_engines` (custom fork), `openai` (for LM Studio), and `streamlit`.
+    This will install `ollama`, `search_engines`, `openai` (for LM Studio), and `streamlit`.
 
 4.  **Ensure your chosen LLM provider is running:**
     *   **Ollama:** Make sure your Ollama application is running and you have pulled the desired models (e.g., `ollama pull llama3.2`).
